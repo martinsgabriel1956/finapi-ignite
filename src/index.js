@@ -13,13 +13,19 @@ const verifyIfExistsAccountCPF = (request, response, next) => {
 
   const customer = customers.find((customer) => customer.cpf === cpf);
 
-  if(!customer) {
-    return response.status(400).send({ error: 'Customer not found' });
-  };
+  if (!customer) response.status(400).send({ error: "Customer not found" });
 
   request.customer = customer;
 
   return next();
+};
+
+const getBalance = (statement) => {
+  const balance = statement.reduce((acc, operation) => {
+    operation.type === "credit" ? acc + operation.value : acc - operation.value;
+  }, 0);
+
+  return balance;
 };
 
 app.post("/account", (request, response) => {
@@ -31,9 +37,8 @@ app.post("/account", (request, response) => {
     (customer) => customer.cpf === cpf
   );
 
-  if(customerAlreadyExists) {
-    return response.status(400).json({ message: "Customer Already Exists!"})
-  }
+  if (customerAlreadyExists)
+    response.status(400).json({ message: "Customer Already Exists!" });
 
   customers.push({
     id,
@@ -45,13 +50,13 @@ app.post("/account", (request, response) => {
   return response.status(201).send();
 });
 
-app.get('/statement', verifyIfExistsAccountCPF, (request, response) => {
-  const { customer} = request;
+app.get("/statement", verifyIfExistsAccountCPF, (request, response) => {
+  const { customer } = request;
 
   return response.json(customer.statement);
-})
+});
 
-app.use('/deposit', verifyIfExistsAccountCPF, (request, response) => {
+app.post("/deposit", verifyIfExistsAccountCPF, (request, response) => {
   const { description, amount } = request.body;
 
   const { customer } = request;
@@ -60,7 +65,28 @@ app.use('/deposit', verifyIfExistsAccountCPF, (request, response) => {
     description,
     amount,
     created_at: new Date(),
-    type: 'credit'
+    type: "credit",
+  };
+
+  customer.statement.push(statementOperation);
+
+  return response.status(201).send();
+});
+
+app.post("/withdraw", verifyIfExistsAccountCPF, (request, response) => {
+  const { amount } = request.body;
+
+  const { customer } = request;
+
+  const balance = getBalance(customer.statement);
+
+  if (balance < amount)
+    response.status(400).json({ message: "Insufficient funds! " });
+
+  const statementOperation = {
+    amount,
+    created_at: new Date(),
+    type: "debit",
   }
 
   customer.statement.push(statementOperation);
